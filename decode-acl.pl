@@ -53,16 +53,18 @@ unshift @subst_modules, 'subst-default.pm'      unless $subst_no_default;
 push    @subst_modules, 'subst-default-len.pm'  unless $subst_no_default;
 my @subst_subroutunes = map { load_plugin($_); } @subst_modules;
 
-my $record = '';
+my $current_record = '';
 my $n_records_excluded = 0;
+my %result = ();
+my $current_path = '';
 
 sub process_record(){
     my %rec;
     unless  ( @rec{qw     (  seq_number    allow_deny         uid        inheritance         perms     )} 
-            = $record =~ /^  (\[\d+\]) (ACCESS_\w+_ACE_TYPE): (.+)\n((?: {10}\[\w+\]\n)*)((?:\t\w+\n)+)$/ 
+            = $current_record =~ /^  (\[\d+\]) (ACCESS_\w+_ACE_TYPE): (.+)\n((?: {10}\[\w+\]\n)*)((?:\t\w+\n)+)$/ 
             ) {
         print "$0: invalid record\n";
-        print $record;
+        print $current_record;
         return;
         }
     
@@ -74,19 +76,27 @@ sub process_record(){
             }
         }
 
-    print "  $rec{seq_number} $rec{allow_deny} $rec{uid} $rec{inheritance} ", join (' ', split (' ', $rec{perms})), "\n";
+    $result{$current_path} .= 
+        "  $rec{seq_number} $rec{allow_deny} $rec{uid} $rec{inheritance} " . join (' ', split (' ', $rec{perms})) . "\n";
     }
 
-sub finish_record(){
-    process_record() if $record;
-    $record = '';
+sub finish_current_record(){
+    process_record() if $current_record;
+    $current_record = '';
     }
 
-sub finish_path(){
-    finish_record();
-    print "  + $n_records_excluded records excluded\n"  if $n_records_excluded;
-    print "\n";
+sub finish_current_path($){
+    my $new_path = shift;
+    if ($current_path){
+        finish_current_record();
+        $result{$current_path} .= 
+            "  + $n_records_excluded records\n"  if $n_records_excluded;
+        }
     $n_records_excluded = 0;
+    $current_path = $new_path;
+    if ($current_path){
+        $result{$current_path} = '';
+        }
     }
 
 my $fl_now_skipping = 0;
@@ -110,6 +120,7 @@ while (<>){
         }
     elsif (/^\S/) { # no spaces in the begining
         my $pathname = $_;
+        chomp $pathname;
         
         $fl_now_skipping = 0;
         foreach my $filter_fcn (@filter_subroutunes){
@@ -119,20 +130,24 @@ while (<>){
             }
         next    if $fl_now_skipping;
 
-        finish_path();
-
-        print $pathname;
+        finish_current_path($pathname);
         }
     elsif (/^  \S/) { # two spaces in the begining
         next if $fl_now_skipping;
-        finish_record();
-        $record = $_;
+        finish_current_record();
+        $current_record = $_;
         }
     else{
         next if $fl_now_skipping;
-        $record .= $_;
+        $current_record .= $_;
         }
-    #print STDERR $record;
+    #print STDERR $current_record;
     }
-finish_path();
+finish_current_path('');
+
+for my $path (sort keys %result){
+    print $path, "\n";
+    print $result{$path};
+    print "\n";
+    }
 

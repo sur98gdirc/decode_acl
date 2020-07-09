@@ -26,11 +26,11 @@ s/          \[OBJECT_INHERIT_ACE\]
     
     $rec->{inheritance} =~
 s/          \[INHERITED_ACE\]
-/[INHERITED] /;
+/[INHERITED]/;
     
     $rec->{inheritance} =~
 s/          \[INHERIT_ONLY_ACE\]
-/[INHERIT_ONLY]/;
+/[INHERIT_ONLY] /;
     }
 
 sub subst_perms_read(\%){
