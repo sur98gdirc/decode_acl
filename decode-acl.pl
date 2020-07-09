@@ -12,14 +12,16 @@ usage:
 $0  [ -x filter_module1,... ] 
     [ -n ] [ -s substituting_module1,... ]  file.accesschkout ...
 
-if no input files specified then input is read from stdin
+If no input files specified then input is read from stdin.
 
-each of <filter_module>s must return a list of references to a funtion that
+Each of <filter_module>s must return a list of references to a funtion that
     takes a pathname and returns 1 (include), -1 (exclude) or 0(try next filter)
-    if no decision was taken (e.g. no filter modules given) default is include
+    if no decision was taken (e.g. no filter modules given) default is include.
 
-each of <substituting_module>s must return a list of references to a funtion 
-    that takes a reference to a \%rec hash
+Each of <substituting_module>s must return a list of references to a funtion 
+    that takes a reference to a \%rec hash.
+    The function is allowed to clear the \%rec hash to exclude correspoding
+    line from output at all.
 
 -n - do not import default substituting modules: subst-default.pm 
     and subst-default-len.pm
@@ -52,6 +54,7 @@ push    @subst_modules, 'subst-default-len.pm'  unless $subst_no_default;
 my @subst_subroutunes = map { load_plugin($_); } @subst_modules;
 
 my $record = '';
+my $n_records_excluded = 0;
 
 sub process_record(){
     my %rec;
@@ -65,18 +68,31 @@ sub process_record(){
     
     foreach my $subst_fcn (@subst_subroutunes){
         $subst_fcn->(\%rec);
+        unless (%rec) { # $subst_fcn told us to exclude this line
+            ++$n_records_excluded;
+            return;
+            }
         }
 
     print "  $rec{seq_number} $rec{allow_deny} $rec{uid} $rec{inheritance} ", join (' ', split (' ', $rec{perms})), "\n";
     }
 
+sub finish_record(){
+    process_record() if $record;
+    $record = '';
+    }
+
+sub finish_path(){
+    finish_record();
+    print "  + $n_records_excluded records excluded\n"  if $n_records_excluded;
+    print "\n";
+    $n_records_excluded = 0;
+    }
+
 my $fl_now_skipping = 0;
 
 while (<>){
-    if (/^\S/) { # no spaces in the begining
-        process_record() if $record;
-        $record = '';
-        
+    if (/^Error: /){
         while (/^Error: /) {
             my $error = $_;
             my $description = '';
@@ -91,7 +107,8 @@ while (<>){
             print $error;
             print $description;
             }
-        
+        }
+    elsif (/^\S/) { # no spaces in the begining
         my $pathname = $_;
         
         $fl_now_skipping = 0;
@@ -102,13 +119,13 @@ while (<>){
             }
         next    if $fl_now_skipping;
 
-        print "\n";
+        finish_path();
+
         print $pathname;
-        print "\n";
         }
     elsif (/^  \S/) { # two spaces in the begining
         next if $fl_now_skipping;
-        process_record() if $record;
+        finish_record();
         $record = $_;
         }
     else{
@@ -117,5 +134,5 @@ while (<>){
         }
     #print STDERR $record;
     }
-process_record() if $record;
+finish_path();
 
